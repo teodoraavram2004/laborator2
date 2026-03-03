@@ -1,47 +1,117 @@
 package org.example;
 
-import org.graalvm.polyglot.*;
-import java.util.*;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Scanner;
+
+import java.awt.image.BufferedImage;
+import java.io.*;
+import java.nio.file.*;
+
+import javax.imageio.ImageIO;
 
 public class Polyglot {
 
-    static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
 
-        Context polyglot = Context.create();
-        Value array = polyglot.eval("js","[\"If\",\"we\",\"run\",\"the\",\"java\",\"command\"]");
+        Scanner scanner = new Scanner(System.in);
 
-        Map<Long, List<String>> crcMap = new HashMap<>();
+        System.out.print("Nume fisier output (ex: plot.png): ");
+        String fileName = scanner.nextLine();
 
-        for (int i = 0; i < array.getArraySize(); i++) {
-            String element = array.getArrayElement(i).asString();
-            long crc = SumCRC(element);
+        System.out.print("Cale salvare (ex: /home/user/Desktop): ");
+        String path = scanner.nextLine();
 
-            crcMap.computeIfAbsent(crc, k -> new ArrayList<>()).add(element);
+        System.out.print("Culoare (red, blue, green, black): ");
+        String colorInput = scanner.nextLine();
+
+        Color plotColor = switch (colorInput.toLowerCase()) {
+            case "red" -> Color.RED;
+            case "blue" -> Color.BLUE;
+            case "green" -> Color.GREEN;
+            default -> Color.BLACK;
+        };
+
+        List<Double> x = new ArrayList<>();
+        List<Double> y = new ArrayList<>();
+
+        List<String> lines = Files.readAllLines(Path.of("dataset.txt"));
+        for (String line : lines) {
+            String[] parts = line.split("\\s+");
+            x.add(Double.parseDouble(parts[0]));
+            y.add(Double.parseDouble(parts[1]));
         }
 
-        for (Map.Entry<Long, List<String>> entry : crcMap.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                System.out.println("CRC " + entry.getKey() + " -> " + entry.getValue());
-            }
+        int n = x.size();
+
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+
+        for (int i = 0; i < n; i++) {
+            sumX += x.get(i);
+            sumY += y.get(i);
+            sumXY += x.get(i) * y.get(i);
+            sumX2 += x.get(i) * x.get(i);
         }
 
-        polyglot.close();
-    }
+        double b = (n * sumXY - sumX * sumY) /
+                (n * sumX2 - sumX * sumX);
+        double a = (sumY - b * sumX) / n;
 
-    private static long SumCRC(String token) {
+        System.out.println("Ecuatia regresiei:");
+        System.out.println("y = " + a + " + " + b + "x");
 
-        if (token.length() > 2) {
-            token = token.substring(1, token.length() - 1);
+        int width = 800;
+        int height = 600;
+
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, width, height);
+
+        g.setColor(Color.BLACK);
+        g.drawLine(50, height - 50, width - 50, height - 50);
+        g.drawLine(50, 50, 50, height - 50);
+
+        double maxX = Collections.max(x);
+        double maxY = Collections.max(y);
+
+        for (int i = 0; i < n; i++) {
+            int px = (int) (50 + (x.get(i) / maxX) * (width - 100));
+            int py = (int) (height - 50 - (y.get(i) / maxY) * (height - 100));
+            g.setColor(plotColor);
+            g.fillOval(px - 4, py - 4, 8, 8);
+        }
+
+        g.setColor(Color.RED);
+        int x1 = 0;
+        int y1 = (int) (a + b * x1);
+        int x2 = (int) maxX;
+        int y2 = (int) (a + b * x2);
+
+        int px1 = 50;
+        int py1 = (int) (height - 50 - (y1 / maxY) * (height - 100));
+        int px2 = (int) (50 + (x2 / maxX) * (width - 100));
+        int py2 = (int) (height - 50 - (y2 / maxY) * (height - 100));
+
+        g.drawLine(px1, py1, px2, py2);
+
+        g.dispose();
+
+        String fullPath = path + "/" + fileName;
+        ImageIO.write(image, "png", new File(fullPath));
+
+        System.out.println("Imagine salvată la: " + fullPath);
+
+        if (System.getProperty("os.name").toLowerCase().contains("linux")) {
+            Runtime.getRuntime().exec("xdg-open " + fullPath);
         } else {
-            return 0;
+            Runtime.getRuntime().exec("cmd /c start " + fullPath);
         }
-
-        Context polyglot = Context.newBuilder().allowAllAccess(true).build();
-
-        Value result = polyglot.eval("python","sum((x + 2*(x**2) + 3*(x**3) + 4*(x**4) + 5*(x**5)) " + "for x in [ord(ch) for ch in '" + token + "'])");
-
-        polyglot.close();
-
-        return result.asLong();
     }
 }
